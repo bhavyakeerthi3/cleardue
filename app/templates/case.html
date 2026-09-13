@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width">
+  <title>ClearDue · Payment Blocker Resolution</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body data-case-id="{{ case_id }}" data-csrf="{{ csrf }}">
+  <header class="topbar">
+    <a class="brand" href="/">ClearDue <span>Payment Blocker Resolution</span></a>
+    <nav><span class="mode">{{ mode }} mode</span><a href="/evaluations">Evaluation</a><button id="judge-mode" class="ghost-button" type="button">Judge mode</button></nav>
+  </header>
+  <main id="workspace">
+    <section class="hero summary-card"><div class="hero-copy"><p class="eyebrow">PAYMENT BLOCKER CASE</p><h1 id="invoice-title">Loading…</h1><p id="customer"></p><div id="as-of" class="as-of"></div></div><div class="readiness-wrap"><span class="eyebrow">CLEARDUE READINESS</span><div id="readiness" class="readiness unknown">UNKNOWN</div></div></section>
+    <section id="blocker" class="blocker-card"><div><p class="eyebrow">WHY IS THIS BLOCKED?</p><h2>Customer acceptance for the migration milestone has not been satisfied.</h2><p class="muted">Delivery completion is separate from contractual customer acceptance.</p></div><div class="blocker-stats"><div><span>JIRA DELIVERY</span><strong>DONE</strong></div><div><span>CUSTOMER ACCEPTANCE</span><strong class="danger-text">NOT ACCEPTED</strong></div></div></section>
+    <section id="executive-view" class="executive-grid"></section>
+    <section id="coverage-strip" class="coverage-strip"></section>
+    <section class="flow-section panel"><div class="section-heading"><div><p class="eyebrow">EVIDENCE → DECISION → ACTION → VERIFICATION</p><h2>One bounded decision, three systems</h2></div><button id="investigate" type="button">Investigate</button></div><div id="decision-flow" class="decision-flow"></div></section>
+    <section class="panel"><div class="section-heading"><div><p class="eyebrow">THREE-SOURCE EVIDENCE</p><h2>Different systems, different facts</h2></div></div><div id="source-cards" class="source-grid"></div></section>
+    <section class="two-column"><article class="panel blocker-detail"><p class="eyebrow">BLOCKER ANALYSIS</p><h2>Why blocked?</h2><div class="comparison"><div><span>Jira delivery</span><strong class="good-text">Done</strong></div><div><span>Customer acceptance</span><strong class="danger-text">Not accepted</strong></div></div><div class="required-outcome"><span class="eyebrow">REQUIRED OUTCOME</span><p>Fix SSO group mapping <b>→</b> rerun acceptance test <b>→</b> obtain written acceptance</p></div><div id="line-table" class="condition-list"></div></article><article class="panel"><p class="eyebrow">FINANCIAL REALITY</p><h2>Invoice state</h2><div id="financial-card" class="financial-card"></div></article></section>
+    <section class="panel plan-panel"><div class="section-heading"><div><p class="eyebrow">SMALLEST SUPPORTED PLAN</p><h2>Minimum necessary work</h2></div><button id="approve" disabled type="button">Approve operational plan</button></div><div class="plan-columns"><div><h3>Executable now</h3><div id="actions-plan"></div></div><div><h3>Awaited outcome</h3><div id="awaited"></div></div></div><p class="guardrail"><span>GUARDRAILS</span> No refund · no amount change · no payment-status mutation · no automatic email sending</p></section>
+    <section class="panel"><div class="section-heading"><div><p class="eyebrow">VERIFIED EXTERNAL EFFECTS</p><h2>What ClearDue actually changed</h2></div></div><div id="verified-effects" class="effects-grid"></div></section>
+
+    <section class="two-column"><article class="panel safety-panel"><p class="eyebrow">FINANCIAL SAFETY</p><h2>Protected financial state</h2><div id="financial-safety" class="safety-list"></div></article><article class="panel replay-panel"><p class="eyebrow">REPLAY PROOF</p><h2>Original event vs replay</h2><div id="replay-proof" class="replay-proof"></div></article></section>
+    <section class="panel"><div class="section-heading"><div><p class="eyebrow">ACTION TIMELINE</p><h2>Write → read back → verify</h2></div><div class="button-row"><button id="fault" class="secondary" type="button">Inject response loss</button><button id="refresh" class="secondary" type="button">Refresh evidence</button><button id="replay" class="secondary" disabled type="button">Replay event</button></div></div><div id="timeline" class="timeline empty">No persisted actions yet.</div></section>
+    <section class="panel"><div class="section-heading"><div><p class="eyebrow">RECOVERY HISTORY</p><h2>Failures remain visible</h2></div></div><div id="recovery-history" class="recovery-history"></div></section>
+    <section class="reliability-grid"><article class="panel reliability"><p class="eyebrow">RELIABILITY</p><h2>Duplicate defense</h2><div class="reliability-row"><span>Event deduplication</span><strong class="status-pill verified">ACTIVE</strong></div><div class="reliability-row"><span>Business effect keys</span><strong class="status-pill verified">ACTIVE</strong></div><div class="reliability-row"><span>Existing verified effects</span><strong id="verified-count">—</strong></div><p class="muted small">Replay controls reuse the original event key. No new effect is reserved by this view.</p></article><article class="panel reliability"><p class="eyebrow">RECOVERY PATH</p><h2>Jira response-loss recovery</h2><div class="recovery-path"><span>UNCERTAIN</span><b>→</b><span>RECONCILE</span><b>→</b><span>FOUND MATCH</span><b>→</b><span>VERIFIED</span></div><p class="muted small">Fixture recovery is covered by the reliability suite; live recovery is shown only when persisted.</p></article></section>
+    <section class="panel evidence-panel"><div class="section-heading"><div><p class="eyebrow">SOURCE SNAPSHOTS</p><h2>Immutable evidence used for the decision</h2></div></div><div id="evidence" class="evidence-grid"></div></section>
+    <div id="toast" role="status"></div>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+data/*.db
+data/*.db-*
+data/google-token.json
+data/token.json
+data/*.png
+data/*.log
+data/google-client-secret.json
+data/fixture-provider.json
+data/live-manifest.json
+artifacts/*
+!artifacts/.gitkeep
