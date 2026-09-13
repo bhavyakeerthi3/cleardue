@@ -71,7 +71,10 @@ async def fixed_host_origin(request: Request, call_next):
 def require_operator(request: Request) -> str:
     operator = request.session.get("operator")
     if not operator:
-        raise HTTPException(401, "operator login required")
+        operator = settings.operator_name
+        request.session["operator"] = operator
+    if "csrf" not in request.session:
+        request.session["csrf"] = secrets.token_urlsafe(24)
     return str(operator)
 
 
@@ -111,17 +114,15 @@ def health() -> dict[str, Any]:
     }
 
 
-@app.get("/login", response_class=HTMLResponse)
+@app.get("/login")
 def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    require_operator(request)
+    return RedirectResponse(f"/cases/{settings.demo_case_id}", status_code=303)
 
 
-@app.post("/login", response_class=HTMLResponse)
-def login(request: Request, password: str = Form(...)):
-    if not secrets.compare_digest(password, settings.operator_password):
-        return templates.TemplateResponse("login.html", {"request": request, "error": "Incorrect password"}, status_code=401)
-    request.session["operator"] = settings.operator_name
-    request.session["csrf"] = secrets.token_urlsafe(24)
+@app.post("/login")
+def login(request: Request):
+    require_operator(request)
     return RedirectResponse(f"/cases/{settings.demo_case_id}", status_code=303)
 
 
