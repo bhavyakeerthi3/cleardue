@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 import uuid
+import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
@@ -26,11 +27,17 @@ worker_stop = asyncio.Event()
 
 
 async def durable_worker(app: FastAPI) -> None:
+    last_poll = 0.0
     while not worker_stop.is_set():
         try:
             worked = await asyncio.to_thread(app.state.engine.process_next)
+            if not worked:
+                worked = await asyncio.to_thread(app.state.engine.executor.resume_pending)
+            if settings.watch_enabled and not worked and time.monotonic() - last_poll >= settings.watch_interval_seconds:
+                last_poll = time.monotonic()
+                await asyncio.to_thread(app.state.engine.poll_evidence, settings.demo_case_id)
         except Exception:
-            worked = True
+            worked = False
         if not worked:
             try:
                 await asyncio.wait_for(worker_stop.wait(), timeout=0.5)
@@ -63,7 +70,7 @@ async def fixed_host_origin(request: Request, call_next):
         return JSONResponse({"detail": "ClearDue is loopback-only"}, status_code=400)
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         origin = request.headers.get("origin")
-        if origin and origin not in {"http://127.0.0.1:8000", "http://localhost:8000", "http://testserver"}:
+        if origin and origin != str(request.base_url).rstrip("/"):
             return JSONResponse({"detail": "invalid origin"}, status_code=403)
     return await call_next(request)
 
@@ -95,9 +102,11 @@ def case_view(case_id: str) -> dict[str, Any]:
         "assessment": assessment,
         "evidence": db.list_case_evidence(case_id),
         "actions": db.list_actions(case_id),
+        "activity": db.activity(case_id),
         "mode": settings.mode,
-        "reasoning_provider": settings.reasoning_provider,
-        "reasoning_model": settings.gemini_model,
+        "reasoning_provider": "fixture-rules" if settings.mode == "fixture" else settings.reasoning_provider,
+        "reasoning_model": "fixture-rules" if settings.mode == "fixture" else settings.gemini_model,
+        "watch_enabled": settings.watch_enabled,
         "missing_live_config": settings.live_missing(),
         "fixture_counts": app.state.engine.fixture.counts() if app.state.engine.fixture else None,
     }
@@ -109,8 +118,8 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "mode": settings.mode,
         "live_ready": not settings.live_missing(),
-        "reasoning_provider": settings.reasoning_provider,
-        "reasoning_model": settings.gemini_model,
+        "reasoning_provider": "fixture-rules" if settings.mode == "fixture" else settings.reasoning_provider,
+        "reasoning_model": "fixture-rules" if settings.mode == "fixture" else settings.gemini_model,
     }
 
 
@@ -134,13 +143,13 @@ def root():
 @app.get("/cases/{case_id}", response_class=HTMLResponse)
 def case_page(request: Request, case_id: str):
     require_operator(request)
-    return templates.TemplateResponse("case.html", {"request": request, "case_id": case_id, "csrf": request.session["csrf"], "mode": settings.mode})
+    return templates.TemplateResponse(request=request, name="case.html", context={"request": request, "case_id": case_id, "csrf": request.session["csrf"], "mode": settings.mode})
 
 
 @app.get("/evaluations", response_class=HTMLResponse)
 def evaluations_page(request: Request, run_id: str = "latest"):
     require_operator(request)
-    return templates.TemplateResponse("evaluations.html", {"request": request, "run_id": run_id, "csrf": request.session["csrf"]})
+    return templates.TemplateResponse(request=request, name="evaluations.html", context={"request": request, "run_id": run_id, "csrf": request.session["csrf"]})
 
 
 @app.get("/api/cases/{case_id}")
@@ -165,7 +174,10 @@ def refresh(request: Request, case_id: str, _: str = Depends(require_operator)):
 @app.post("/api/cases/{case_id}/approve")
 def approve(request: Request, case_id: str, body: ApprovalRequest, operator: str = Depends(require_operator)):
     require_csrf(request)
-    action_ids = app.state.engine.approve_and_execute(case_id, body.assessment_id, body.plan_hash, operator)
+    try:
+        action_ids = app.state.engine.approve_and_execute(case_id, body.assessment_id, body.plan_hash, operator)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
     return {"action_ids": action_ids}
 
 
@@ -178,18 +190,42 @@ def replay(request: Request, event_id: str, _: str = Depends(require_operator)):
         raise HTTPException(404, "event not found")
     if event["status"] != "COMPLETED":
         raise HTTPException(409, "only a completed event can be replayed")
+    before_rows = len(db.list_actions(event["case_id"]))
+    before_counts = app.state.engine.fixture.counts() if app.state.engine.fixture else None
     replay_id, duplicate = db.insert_event_once(event["case_id"], event["source"], event["dedupe_key"], event["event_type"], {})
-    return {"event_id": replay_id, "duplicate": duplicate}
+    proof = {"event_id": replay_id, "duplicate": duplicate, "ledger_rows": len(db.list_actions(event["case_id"])), "fixture_counts": app.state.engine.fixture.counts() if app.state.engine.fixture else None}
+    proof["before"] = {"ledger_rows": before_rows, "fixture_counts": before_counts}
+    proof["additional_ledger_rows"] = proof["ledger_rows"] - before_rows
+    proof["additional_fixture_mutations"] = proof["fixture_counts"]["mutations"] - before_counts["mutations"] if before_counts else None
+    db.record_activity(event["case_id"], "REPLAY", proof)
+    return proof
+
+
+@app.post("/api/cases/{case_id}/fixture-evidence/{scenario}")
+def fixture_evidence(request: Request, case_id: str, scenario: str, _: str = Depends(require_operator)):
+    require_csrf(request)
+    if settings.mode != "fixture":
+        raise HTTPException(403, "Simulated evidence is fixture-only")
+    if scenario not in {"migration", "training", "unauthorized"}:
+        raise HTTPException(400, "unknown fixture scenario")
+    from .demo_data import arrival
+    from .models import CaseBinding
+    binding = CaseBinding.model_validate(db.get_case(case_id)["binding"])
+    cid = "training-change-order" if scenario == "training" else "migration-acceptance"
+    item = arrival(binding, cid, sender="outsider@example.com" if scenario == "unauthorized" else None)
+    app.state.engine.fixture.ingest_fixture_evidence(item)
+    db.record_activity(case_id, "FIXTURE_EVIDENCE_ARRIVED", {"scenario": scenario, "source_id": item["external_id"], "mode": "fixture"})
+    # The same evidence watcher used by live mode detects the changed snapshot.
+    event, duplicate = app.state.engine.poll_evidence(case_id)
+    return {"event_id": event, "duplicate": duplicate, "mode": "fixture"}
 
 
 @app.post("/api/demo/faults")
 def arm_fault(request: Request, body: FaultRequest, _: str = Depends(require_operator)):
     require_csrf(request)
     if settings.mode != "fixture":
-        from .adapters.transport import FAULTS
-        FAULTS.arm(body.provider, body.fault)
-    else:
-        app.state.engine.executor.lose_next_fixture_jira_response = True
+        raise HTTPException(403, "UI fault injection is fixture-only")
+    app.state.engine.executor.lose_next_fixture_jira_response = True
     return {"armed": True, "provider": body.provider, "fault": body.fault}
 
 
