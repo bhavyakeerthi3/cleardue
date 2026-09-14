@@ -1,12 +1,13 @@
-# Reliability brief
+# Reliability boundaries
 
-ClearDue uses three layers of duplicate defense: incoming source-event deduplication, unique business-effect keys, and remote reconciliation after uncertain writes. It persists an intent before writing. A worker restart treats an `IN_FLIGHT` action as uncertain and reconciles it rather than recreating the object.
+Exact immutable evidence spans, reviewed condition IDs, invoice/customer/project identity, authority and freshness are checked outside the model. Invalid proposals cannot reserve actions. Approval requires the current assessment, exact plan hash and fresh matching provider fingerprint within a time window.
 
-HTTP success is not enough. Gmail drafts, Jira issues, and Razorpay notes become `VERIFIED` only after a read-back matches their expected recipient/project/invoice and content marker. A lost Jira create response triggers a project-scoped search for `cleardue-op-<hash>`. One exact match is fetched and verified; no match remains uncertain because Jira search may be eventually consistent; multiple or mismatched results require the operator.
+The ledger persists intent before a write. Equivalent business operations reuse stable effect keys. Gmail reuse requires useful nonempty content covering the requested conditions; the old empty live draft is not sufficient. A lost create response triggers reconciliation rather than a blind create. Acknowledged IDs are verified by reads. Bounded recovery ends in operator attention if unresolved. Historical rejection remains recorded.
 
-Readiness is deterministic. Required sources must be complete, identities must match exact bindings, all reviewed conditions must be satisfied, the invoice must have a current payable provider state, and no unresolved conflict or validation error may remain. The result is timestamped and means conditions are satisfied as of that check. It never means paid.
+Executed fixture tests cover the full business loop, semantic replay, response loss, process interruption after creation, stale approval, unauthorized/wrong-scope/stale/agent-generated acceptance, retraction, changed money and provider failure. These are not live model quality or provider reliability measurements.
 
-Email and Jira text are untrusted evidence. The model cannot authorize actions. The only effects are a Gmail draft, Jira remediation issue, and three namespaced Razorpay notes. No send, refund, amount change, cancellation, payment mutation, or generic execution capability exists.
+Historical live proof covers provider writes/read-back and same-event replay, not live response loss or completed live readiness. The old Gmail content was empty and is not useful-content proof.
 
-Current validation: automated unit/integration-style tests and the 22-scenario fixture-rules evaluator. Live provider preflight is still required because credentials are intentionally absent from the repository. Fixture results and provider results must remain separately labeled in the submission.
+Boundaries: single-process SQLite, conservative English authority checks, bounded searches, periodic polling and a trusted loopback console. Source refresh failure invalidates readiness. Ambiguity needs human review.
 
+Time passing can invalidate acceptance even when the source text is unchanged. The watcher revokes readiness on expiry, and approval rechecks authority before action reservation. Jira read-back requires the approved description and operation reference as well as the correct project, summary and label; unexpected document structure fails closed for review.

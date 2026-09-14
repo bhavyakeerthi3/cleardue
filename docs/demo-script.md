@@ -1,19 +1,16 @@
-# Two-minute demo
+# Five-minute demo
 
-**0:00–0:12** — Show the INR 24,00,000 issued invoice and customer objection.
+Start a fresh rehearsal with `python scripts/run_professional.py --new-run --port 8001`. Earlier rehearsals and the live database are preserved. The independent terminal proof is `python scripts/prove_demo.py`.
 
-**0:12–0:30** — Run Investigate. Point to Gmail, Jira, and Razorpay source receipts.
+Use an isolated fixture case for rehearsal and label simulation throughout. A live recording requires valid Gemini access and genuine evidence; never splice fixture readiness into a claimed live run.
 
-**0:30–0:48** — Open the contradiction: Jira delivery is Done; customer acceptance failed; training approval was not found in the searched scope.
+- 0:00–0:25: Show the blocked invoice. “Jira says Done. The customer test says failed. Which condition blocks payment?”
+- 0:25–0:45: Show the Gemini reasoning result and the deterministic validation trace.
+- 0:45–1:30: Inspect exact evidence, approver, project and smallest supported plan.
+- 1:30–2:20: Review and approve useful content. Show read-back and recovery history.
+- 2:20–3:10: Migration acceptance arrives; training still blocks. Training approval arrives; automatic re-evaluation produces READY_FOR_PAYMENT. Amount and payment state stay unchanged.
+- 3:10–3:45: Replay the original event and show persisted before/after counts. Explain the separate paraphrased-investigation regression.
+- 3:45–4:20: Unauthorized acceptance requires human review. Show response-loss recovery as fixture proof unless actually live-tested.
+- 4:20–4:50: State the business outcome, current limitations and pre-existing project disclosure.
 
-**0:48–1:02** — Show the smallest supported plan: one remediation issue, one combined customer draft, one financial-record case note. Call out awaited outcomes.
-
-**1:02–1:22** — Arm “Inject Jira response loss,” approve, and show `UNCERTAIN → FOUND_MATCH → VERIFIED`, with exactly one Jira issue.
-
-**1:22–1:36** — Open the real Gmail draft, Jira issue, and Razorpay invoice notes. Confirm the invoice amount is unchanged and the case remains blocked.
-
-**1:36–1:47** — Replay the same source event. Show unchanged provider object/mutation counts.
-
-**1:47–2:00** — Show the actual evaluation run ID, passed/total count, false-ready count, and recovery result. Say: “Find the blocker. Fix the blocker. Prove the invoice is ready.”
-
-Use live provider objects in the recorded submission. If a provider is unavailable, show a previously recorded genuine run with its timestamp and clearly label any fixture replay.
+Record no credentials or unrelated private inbox data. Submit measured results, not invented reliability percentages.
