@@ -14,54 +14,7 @@ After installing dependencies, run `python scripts/prove_demo.py`. It asserts th
 
 ClearDue separates interpretation from authority. Gemini proposes meaning from a bounded snapshot; deterministic code decides what is valid, allowed and verifiable.
 
-```mermaid
-flowchart TD
-  U([Operator]) --> API[ClearDue operator console]
-  API --> READ[Read-only evidence collection]
-
-  subgraph SOURCES[Three systems of record]
-    direction LR
-    G[(Gmail)]
-    J[(Jira)]
-    RZ[(Razorpay)]
-  end
-
-  READ --> SOURCES
-  SOURCES --> SNAP[Immutable source snapshots]
-  SNAP --> B[Bounded EvidenceBundle]
-  B --> LLM[Gemini<br/>one structured proposal]
-
-  subgraph CONTROL[Deterministic control plane]
-    direction TB
-    LLM --> PROP[ReasoningProposal]
-    PROP --> VAL[Grounding + policy validation]
-    VAL --> PLAN[ValidatedPlan]
-    PLAN --> APPROVE[Human approval<br/>assessment + plan hash]
-    APPROVE --> LEDGER[(Action ledger<br/>effect keys)]
-  end
-
-  LEDGER --> EXEC[Approved provider actions]
-  EXEC --> G
-  EXEC --> J
-  EXEC --> RZ
-  EXEC --> VERIFY[Read-back verification<br/>reconciliation + safe replay]
-  VERIFY --> OUT{Readiness decision}
-  OUT --> BLOCKED[BLOCKED]
-  OUT --> READY[READY_FOR_PAYMENT]
-  READY -.->|payment remains unchanged| RZ
-  SNAP -. new evidence .-> B
-
-  classDef app fill:#0f172a,color:#fff,stroke:#0f172a
-  classDef source fill:#e0f2fe,color:#082f49,stroke:#0284c7
-  classDef reasoning fill:#fef3c7,color:#78350f,stroke:#d97706
-  classDef control fill:#ecfdf5,color:#064e3b,stroke:#059669
-  classDef outcome fill:#f3e8ff,color:#581c87,stroke:#9333ea
-  class API,READ,SNAP,EXEC app
-  class G,J,RZ source
-  class B,LLM,PROP reasoning
-  class VAL,PLAN,APPROVE,LEDGER,VERIFY control
-  class OUT,BLOCKED,READY outcome
-```
+![ClearDue investigation to payment-readiness architecture](docs/flowchart_fin.png)
 
 Gemini receives only the bounded EvidenceBundle. It has no credentials, provider clients, database access or write tools. Deterministic code owns identity, money, condition IDs, evidence spans, approvals, targets, idempotency, retries, reconciliation, verification and readiness. `READY_FOR_PAYMENT` never means payment occurred.
 
