@@ -40,6 +40,16 @@ class Database:
         with self.connection() as conn:
             conn.executescript(schema)
 
+    def record_activity(self, case_id: str, kind: str, payload: dict[str, Any]) -> None:
+        now, event_id = utc_now(), str(uuid.uuid4())
+        with self.transaction() as conn:
+            conn.execute("INSERT INTO events (id,case_id,source,dedupe_key,event_type,payload_json,status,created_at,completed_at) VALUES (?,?,?,?,?,?,'COMPLETED',?,?)", (event_id,case_id,"activity",event_id,kind,canonical_json(payload),now,now))
+
+    def activity(self, case_id: str) -> list[dict[str, Any]]:
+        with self.connection() as conn:
+            rows = conn.execute("SELECT * FROM events WHERE case_id=? ORDER BY created_at DESC LIMIT 100", (case_id,)).fetchall()
+        return [self._decode(row) for row in rows]
+
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
         conn = self.connect()

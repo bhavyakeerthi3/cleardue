@@ -3,6 +3,9 @@ from __future__ import annotations
 import base64
 import hashlib
 from email.message import EmailMessage
+from email import policy
+from email.parser import BytesParser
+from email.utils import getaddresses
 from pathlib import Path
 from typing import Any
 
@@ -77,6 +80,8 @@ class GmailAdapter:
             ).json()
 
     def create_draft(self, payload: dict[str, Any], operation_ref: str) -> WriteOutcome:
+        if not all(str(payload.get(k, "")).strip() for k in ("to", "subject", "body")):
+            raise ProviderError(FailureKind.DEFINITE_REJECTION, "gmail", "nonempty recipient, subject and body required")
         message = EmailMessage()
         message["To"] = payload["to"]
         message["Subject"] = payload["subject"]
@@ -125,9 +130,16 @@ class GmailAdapter:
 
     def verify_draft(self, draft_id: str, payload: dict[str, Any], operation_ref: str) -> Verification:
         draft = self.get_draft(draft_id)
-        text = self._decode_raw(draft["message"]["raw"])
+        raw = draft["message"]["raw"]
+        message = BytesParser(policy=policy.default).parsebytes(base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)))
+        part = message.get_body(preferencelist=("plain",))
+        body = part.get_content() if part else ""
         expected = [payload["to"], payload["subject"], payload["body"], operation_ref]
-        ok = all(value in text for value in expected)
+        recipients = [address.lower() for _, address in getaddresses(message.get_all("To", []))]
+        ok = (all(str(v).strip() for v in expected) and recipients == [payload["to"].lower()]
+            and str(message.get("Subject", "")) == payload["subject"]
+            and body.replace("\r\n", "\n").rstrip("\n") == payload["body"].replace("\r\n", "\n").rstrip("\n")
+            and message.get("X-ClearDue-Operation") == operation_ref)
         expected_hash = hashlib.sha256("\n".join(expected).encode()).hexdigest()
         return Verification(
             status=VerificationStatus.VERIFIED if ok else VerificationStatus.MISMATCH,
@@ -137,4 +149,3 @@ class GmailAdapter:
             evidence_of_readback={"draft_id": draft_id, "message_id": draft["message"]["id"]},
             checked_at=utc_now(),
         )
-
