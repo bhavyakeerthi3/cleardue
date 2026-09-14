@@ -12,18 +12,40 @@ After installing dependencies, run `python scripts/prove_demo.py`. It asserts th
 
 ## Architecture
 
+ClearDue separates interpretation from authority. Gemini proposes meaning from a bounded snapshot; deterministic code decides what is valid, allowed and verifiable.
+
 ```mermaid
-flowchart TD
-  U[Operator requests investigation] --> C[Bounded Gmail / Jira / Razorpay reads]
-  C --> E[Immutable evidence bundle]
-  E --> R[One Gemini structured reasoning call]
-  R --> V[Deterministic grounding and policy]
-  E --> V
-  V --> A[Approval and action ledger]
-  A --> X[Gmail / Jira / Razorpay adapters]
-  X --> Q[Verification and reconciliation]
-  N[New acceptance evidence] --> C
-  V --> O[BLOCKED or READY_FOR_PAYMENT]
+flowchart LR
+  U([Operator]) -->|investigate| API[FastAPI operator console]
+
+  subgraph READ[Read-only collection]
+    G[(Gmail)] --> SNAP[Immutable evidence snapshots]
+    J[(Jira)] --> SNAP
+    RZ[(Razorpay)] --> SNAP
+  end
+
+  API --> READ
+  SNAP --> B[EvidenceBundle<br/>bounded scope + identity]
+  B --> LLM[Gemini<br/>one structured reasoning call]
+
+  subgraph AUTH[Deterministic authority]
+    LLM --> PROP[ReasoningProposal]
+    PROP --> VAL[Evidence spans<br/>condition registry<br/>policy + target checks]
+    VAL --> PLAN[ValidatedPlan]
+    PLAN --> APPROVE[Human approval<br/>assessment + plan hash]
+    APPROVE --> LEDGER[(SQLite action ledger<br/>effect keys)]
+  end
+
+  LEDGER -->|approved actions| TOOLS[Bounded provider adapters]
+  TOOLS --> G
+  TOOLS --> J
+  TOOLS --> RZ
+  TOOLS --> VERIFY[Read-back verification<br/>reconciliation + retry safety]
+  VERIFY --> OUT{Business readiness}
+  OUT --> BLOCKED[BLOCKED]
+  OUT --> READY[READY_FOR_PAYMENT]
+  READY -. payment remains provider-controlled .-> RZ
+  SNAP -. new evidence .-> B
 ```
 
 Gemini receives only the bounded EvidenceBundle. It has no credentials, provider clients, database access or write tools. Deterministic code owns identity, money, condition IDs, evidence spans, approvals, targets, idempotency, retries, reconciliation, verification and readiness. `READY_FOR_PAYMENT` never means payment occurred.
@@ -71,4 +93,4 @@ See [measured verification and evidence limits](docs/verification.md). GitHub Ac
 
 This is a single-process SQLite operator console with bounded polling and conservative English authority checks. Ambiguous evidence requires human review. “Minimum” means the fewest writes among the supplied candidates that cover the required work, not a global optimization guarantee. Exact citation coverage measures exact text references, not semantic truth. It builds on an earlier multi-app hackathon prototype; disclose that foundation when submitting. Do not claim live outcomes that were not observed.
 
-See [reliability](docs/reliability.md) and [demo script](docs/demo-script.md).
+See [reliability](docs/reliability.md) for the evaluation model and known limits.
