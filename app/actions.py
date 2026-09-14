@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .adapters.gmail import GmailAdapter
@@ -21,13 +22,31 @@ class ActionExecutor:
         self.fixture = fixture
         self.lose_next_fixture_jira_response = False
 
+    def resume_pending(self) -> bool:
+        """Resume only recovery reads; never schedule a fresh PLANNED write."""
+        with self.db.connection() as conn:
+            rows = conn.execute("SELECT id FROM actions WHERE request_status IN ('IN_FLIGHT','UNCERTAIN','RETRY_WAIT') AND (next_attempt_at IS NULL OR next_attempt_at<=?) ORDER BY updated_at LIMIT 8", (utc_now(),)).fetchall()
+        for candidate in rows:
+            row = self.db.get_action(candidate["id"])
+            attempts = list(row.get("attempts", []))
+            if sum(a.get("stage") == "RECOVERY_READ" for a in attempts) >= 3:
+                self.db.update_case_state(row["case_id"], "NEEDS_OPERATOR")
+                continue
+            attempts.append({"stage": "RECOVERY_READ", "outcome": "STARTED", "at": utc_now()})
+            due = (datetime.now(timezone.utc)+timedelta(seconds=30)).isoformat()
+            if not self.db.transition_action(row["id"], row["request_status"], row["request_status"], attempts_json=attempts, next_attempt_at=due):
+                continue
+            self.execute(row["id"])
+            return True
+        return False
+
     def reserve_plan(self, case: dict[str, Any], assessment: dict[str, Any]) -> list[str]:
         binding = case["binding"]
         action_ids: list[str] = []
         existing_actions = self.db.list_actions(case["id"])
         for action_data in assessment["plan"]["actions"]:
             action = PlannedAction.model_validate(action_data)
-            reused_gmail = self._verified_gmail_draft(existing_actions, action)
+            reused_gmail = self._verified_gmail_draft(existing_actions, action, case["binding_version"])
             if reused_gmail:
                 action_ids.append(reused_gmail["id"])
                 continue
@@ -37,6 +56,11 @@ class ActionExecutor:
                 "razorpay": binding["payment_account_ref"],
             }[action.app]
             key = effect_key(action.app, account_ref, case["id"], action)
+            # Preserve the first approved operation/payload across paraphrases.
+            existing_effect = next((row for row in existing_actions if row["effect_key"] == key), None)
+            if existing_effect:
+                action_ids.append(existing_effect["id"])
+                continue
             payload = {"action": action.model_dump(mode="json"), "operation_ref": key[:24]}
             action_id, _ = self.db.reserve_action_once({
                 "case_id": case["id"], "assessment_id": assessment["id"], "effect_key": key,
@@ -50,7 +74,7 @@ class ActionExecutor:
 
     @staticmethod
     def _verified_gmail_draft(
-        existing_actions: list[dict[str, Any]], action: PlannedAction
+        existing_actions: list[dict[str, Any]], action: PlannedAction, binding_version: int
     ) -> dict[str, Any] | None:
         if action.action_type != ActionType.CREATE_GMAIL_DRAFT:
             return None
@@ -66,7 +90,10 @@ class ActionExecutor:
             if (
                 prior.action_type == action.action_type
                 and prior.exact_target_id == action.exact_target_id
-                and prior.purpose_revision == action.purpose_revision
+                and set(action.condition_ids).issubset(prior.condition_ids)
+                and existing.get("preconditions", {}).get("binding_version") == binding_version
+                and bool(str(prior.payload.get("subject", "")).strip())
+                and bool(str(prior.payload.get("body", "")).strip())
             ):
                 return existing
         return None
@@ -131,6 +158,8 @@ class ActionExecutor:
         if action.action_type == ActionType.CREATE_GMAIL_DRAFT:
             return self._gmail().create_draft(action.payload, operation_ref)
         if action.action_type == ActionType.CREATE_JIRA_REMEDIATION:
+            if action.exact_target_id != self.settings.jira_project_key:
+                raise ProviderError(FailureKind.PERMISSION, "jira", "approved target differs from configured project")
             return self._jira().create_remediation(action.payload, operation_ref)
         if action.action_type == ActionType.UPDATE_RAZORPAY_NOTES:
             return self._razorpay().update_case_notes(action.exact_target_id, action.payload, int(action.payload["cleardue_revision"]))

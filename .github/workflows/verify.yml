@@ -1,0 +1,23 @@
+name: Verify ClearDue
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  fixture-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLEARDUE_MODE: fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pip check
+      - run: python -m pytest -q
+      - run: python evals/run.py
+      - run: python scripts/prove_demo.py
+      - run: python -m compileall -q app scripts evals tests
+      - run: node --check app/static/app.js

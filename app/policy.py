@@ -61,6 +61,8 @@ def validate_identity(binding: CaseBinding, evidence_items: list[EvidenceItem], 
         project = item.identity.get("project_ref")
         if project and project != binding.project_ref:
             errors.append(f"wrong project evidence: {item.evidence_id}")
+        if item.app == "jira" and item.identity.get("project_key") and item.identity["project_key"] != binding.jira_project_id:
+            errors.append(f"wrong Jira project: {item.evidence_id}")
     return errors
 
 
@@ -124,11 +126,7 @@ def _jira_remediation_payload(
         description = "\n\n".join(lines).strip()
 
     payload = {"summary": summary, "description": description}
-    purpose_revision = stable_hash({
-        "condition_ids": sorted(intent.condition_ids),
-        "summary": summary,
-        "description": description,
-    })[:16]
+    purpose_revision = stable_hash({"condition_ids": sorted(intent.condition_ids), "binding_version": binding.binding_version})[:16]
     return payload, purpose_revision
 
 
@@ -147,6 +145,8 @@ def build_plan(
     if len(condition_ids) != len(proposal.condition_evaluations) and "duplicate condition ID" not in errors:
         errors.append("duplicate condition ID")
     for intent in proposal.action_intents:
+        if not intent.condition_ids:
+            errors.append("action must address a reviewed condition")
         if any(condition_id not in condition_ids for condition_id in intent.condition_ids):
             errors.append(f"action references unknown condition: {intent.purpose}")
 
@@ -173,12 +173,23 @@ def build_plan(
     approver = next((p.email for p in binding.participant_roles if p.role == "authorized_customer_approver"), None)
     revision = stable_hash(sorted(condition_ids))[:12]
     for intent in proposal.action_intents:
+        scope = sorted(set(intent.condition_ids))
+        if scope and all(conditions.get(cid) and conditions[cid].status == ConditionStatus.SATISFIED for cid in scope):
+            continue
+        semantic_target = ":".join(scope)
+        revision = stable_hash({"conditions": scope, "binding_version": binding.binding_version})[:16]
         if intent.allowed_type == ActionType.CREATE_GMAIL_DRAFT:
             if not approver:
                 errors.append("no bound authorized customer approver")
                 continue
-            payload = {"to": approver, "subject": intent.content_fields.get("subject", ""), "body": intent.content_fields.get("body", "")}
-            actions.append(PlannedAction(action_type=intent.allowed_type, app="gmail", logical_target=f"draft:{intent.purpose}", purpose_revision=revision, condition_ids=intent.condition_ids, exact_target_id=approver, payload=payload))
+            requirements = [conditions[cid].requirement for cid in scope if cid in conditions]
+            if not requirements:
+                errors.append("draft has no validated condition")
+                continue
+            # Content comes from the reviewed requirement and exact source quotes, not free-form model assertions.
+            quotations = list(dict.fromkeys(r.quote for cid in scope if cid in conditions for r in conditions[cid].support_refs + conditions[cid].conflict_refs))
+            payload = {"to": approver, "subject": f"{binding.project_ref} — acceptance evidence requested", "body": f"Project: {binding.project_ref}\n\nPlease provide the following evidence for invoice {binding.invoice_id}:\n" + "\n".join(f"- {x}" for x in requirements) + "\n\nEvidence currently on record:\n" + "\n".join(f'\"{q}\"' for q in quotations[:4]) + "\n\nPlease confirm the relevant milestone and test result, or identify any remaining issue. This request does not establish acceptance or change the invoice."}
+            actions.append(PlannedAction(action_type=intent.allowed_type, app="gmail", logical_target=f"acceptance-request:{semantic_target}", purpose_revision=revision, condition_ids=scope, exact_target_id=approver, payload=payload))
         elif intent.allowed_type == ActionType.CREATE_JIRA_REMEDIATION:
             payload, jira_revision = _jira_remediation_payload(
                 binding, intent, conditions, evidence_items
@@ -186,7 +197,7 @@ def build_plan(
             if not payload["summary"] or not payload["description"]:
                 errors.append(f"Jira remediation content is empty: {intent.purpose}")
                 continue
-            actions.append(PlannedAction(action_type=intent.allowed_type, app="jira", logical_target="remediation:migration-acceptance", purpose_revision=jira_revision, condition_ids=intent.condition_ids, exact_target_id=binding.jira_project_id, payload=payload))
+            actions.append(PlannedAction(action_type=intent.allowed_type, app="jira", logical_target=f"remediation:{semantic_target}", purpose_revision=jira_revision, condition_ids=scope, exact_target_id=binding.jira_project_id, payload=payload))
         elif intent.allowed_type == ActionType.UPDATE_RAZORPAY_NOTES:
             actions.append(PlannedAction(action_type=intent.allowed_type, app="razorpay", logical_target=f"invoice:{binding.invoice_id}:case-state", purpose_revision=revision, condition_ids=intent.condition_ids, exact_target_id=binding.invoice_id, payload={"cleardue_case": binding.case_id, "cleardue_state": "BLOCKED", "cleardue_revision": "1"}))
         else:
@@ -220,6 +231,8 @@ def effect_key(app: str, account_ref: str, case_id: str, action: PlannedAction) 
 
 def readiness_for(proposal: ReasoningProposal, manifests: list[dict[str, Any]], financial: dict[str, Any], validation_errors: list[str]) -> tuple[str, list[str]]:
     reasons: list[str] = []
+    if not proposal.condition_evaluations:
+        reasons.append("NO_REVIEWED_CONDITIONS")
     if validation_errors:
         reasons.append("VALIDATION_REVIEW")
     if any(not item.get("complete") or item.get("truncated") for item in manifests):

@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     reasoning_provider: Literal["gemini"] = Field("gemini", alias="REASONING_PROVIDER")
     gemini_api_key: str | None = Field(None, alias="GEMINI_API_KEY")
     gemini_model: str = Field("gemini-3.6-flash", alias="GEMINI_MODEL")
+    watch_interval_seconds: int = Field(60, ge=10, alias="CLEARDUE_WATCH_SECONDS")
+    watch_enabled: bool = Field(False, alias="CLEARDUE_WATCH_ENABLED")
+    approval_ttl_seconds: int = Field(300, ge=1, alias="CLEARDUE_APPROVAL_TTL_SECONDS")
 
     google_client_secret_file: Path = Field(
         ROOT / "data" / "google-client-secret.json", alias="GOOGLE_CLIENT_SECRET_FILE"

@@ -94,6 +94,9 @@ class CaseBinding(StrictModel):
     project_ref: str
     bound_issue_ids: list[str] = Field(default_factory=list)
     contract_evidence_ids: list[str] = Field(default_factory=list)
+    reviewed_conditions: list[dict[str, Any]] = Field(default_factory=list)
+    expected_amount_minor: int | None = None
+    expected_currency: str | None = None
 
 
 class LineItem(StrictModel):
@@ -231,6 +234,7 @@ class ValidatedPlan(StrictModel):
     awaited_conditions: list[str]
     plan_hash: str
     review_reasons: list[str]
+    alternatives: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class WriteOutcome(StrictModel):
@@ -267,4 +271,3 @@ class ApprovalRequest(StrictModel):
 class FaultRequest(StrictModel):
     provider: Literal["jira"]
     fault: Literal["lose_create_response"]
-

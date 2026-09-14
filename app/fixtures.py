@@ -35,7 +35,22 @@ class FixtureProviderSuite:
         fixture = json.loads(self.source_path.read_text(encoding="utf-8"))
         state = self._load()
         financial = {**state["financial"], "fetched_at": utc_now()}
-        return FinancialSnapshot.model_validate(financial), copy.deepcopy(fixture["evidence"]), copy.deepcopy(fixture["manifests"])
+        evidence = copy.deepcopy(fixture["evidence"]) + state.get("incoming_evidence", [])
+        manifests = copy.deepcopy(fixture["manifests"])
+        for manifest in manifests:
+            manifest["fetched_at"] = utc_now()
+            manifest["source_object_ids"] = [e["external_id"] for e in evidence if e["app"] == manifest["app"]]
+        return FinancialSnapshot.model_validate(financial), evidence, manifests
+
+    def ingest_fixture_evidence(self, item: dict[str, Any]) -> bool:
+        """Local simulator only. This never represents a live mailbox arrival."""
+        state = self._load()
+        items = state.setdefault("incoming_evidence", [])
+        if any(e["external_id"] == item["external_id"] and e["content_hash"] == item["content_hash"] for e in items):
+            return False
+        items.append(item)
+        self._save(state)
+        return True
 
     def create_gmail_draft(self, payload: dict[str, Any], operation_ref: str) -> WriteOutcome:
         state = self._load()
@@ -98,4 +113,3 @@ class FixtureProviderSuite:
     def counts(self) -> dict[str, int]:
         state = self._load()
         return {"drafts": len(state["drafts"]), "issues": len(state["issues"]), "mutations": state["mutation_count"]}
-

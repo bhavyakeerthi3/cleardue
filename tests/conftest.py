@@ -12,7 +12,7 @@ from app.models import CaseBinding
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return Settings(CLEARDUE_MODE="fixture", CLEARDUE_DB_PATH=tmp_path / "test.db", CLEARDUE_SESSION_SECRET="test-secret", CLEARDUE_OPERATOR_PASSWORD="test")
+    return Settings(_env_file=None, CLEARDUE_MODE="fixture", CLEARDUE_DB_PATH=tmp_path / "test.db", CLEARDUE_SESSION_SECRET="test-secret", CLEARDUE_OPERATOR_PASSWORD="test")
 
 
 @pytest.fixture

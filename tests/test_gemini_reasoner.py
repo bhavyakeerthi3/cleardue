@@ -89,6 +89,16 @@ def test_gemini_request_uses_structured_output_without_tools():
     assert config.thinking_config.thinking_level.value == "LOW"
 
 
+def test_reported_model_version_does_not_replace_configured_request_endpoint():
+    bundle, proposal = fixture_bundle_and_proposal()
+    client = FakeClient(FakeResponse(proposal, model_version="returned-version-metadata"))
+    reasoner = GeminiReasoner("test-key", "gemini-3.6-flash", client=client)
+    reasoner.reason(bundle)
+    _, usage = reasoner.reason(bundle)
+    assert [call["model"] for call in client.models.calls] == ["gemini-3.6-flash"] * 2
+    assert usage["model_id"] == "returned-version-metadata"
+
+
 def test_gemini_schema_removes_every_additional_properties_keyword():
     original = ReasoningProposal.model_json_schema()
     compatible = gemini_compatible_schema()

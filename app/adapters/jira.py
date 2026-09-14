@@ -41,9 +41,13 @@ class JiraAdapter:
                     provider="jira", params={"startAt": start, "maxResults": 100},
                 ).json()
                 comments.extend(data.get("comments", []))
+                if len(comments) >= 100:
+                    return comments[:100]
                 start += len(data.get("comments", []))
                 if start >= data.get("total", 0):
                     return comments
+                if not data.get("comments"):
+                    raise ValueError("Jira comment pagination returned an incomplete page")
 
     def search(self, jql: str, fields: list[str] | None = None, max_results: int = 50) -> list[dict[str, Any]]:
         body = {"jql": jql, "maxResults": max_results, "fields": fields or ["summary", "status", "labels", "updated"]}
@@ -92,12 +96,16 @@ class JiraAdapter:
         issue = self.get_issue(issue_id)
         fields = issue["fields"]
         label = self.operation_label(operation_ref)
-        ok = fields.get("summary") == payload["summary"] and label in fields.get("labels", []) and fields.get("project", {}).get("key") == self.project_key
-        expected_hash = hashlib.sha256(f"{payload['summary']}|{label}|{self.project_key}".encode()).hexdigest()
+        expected_description = {
+            "type": "doc", "version": 1,
+            "content": [{"type": "paragraph", "content": [{"type": "text", "text": f"{payload['description']}\nClearDue operation: {operation_ref}"}]}],
+        }
+        description_matches = fields.get("description") == expected_description
+        ok = issue.get("key") == issue_id and description_matches and fields.get("summary") == payload["summary"] and label in fields.get("labels", []) and fields.get("project", {}).get("key") == self.project_key
+        expected_hash = hashlib.sha256(f"{payload['summary']}|{payload['description']}|{operation_ref}|{label}|{self.project_key}".encode()).hexdigest()
         return Verification(
             status=VerificationStatus.VERIFIED if ok else VerificationStatus.MISMATCH,
             observed_external_id=issue.get("key"), expected_fields_hash=expected_hash,
-            observed_fields={"summary": fields.get("summary"), "labels": fields.get("labels"), "project": fields.get("project", {}).get("key")},
+            observed_fields={"summary": fields.get("summary"), "description": fields.get("description"), "description_matches": description_matches, "labels": fields.get("labels"), "project": fields.get("project", {}).get("key")},
             evidence_of_readback={"issue_id": issue.get("id"), "issue_key": issue.get("key")}, checked_at=utc_now(),
         )
-

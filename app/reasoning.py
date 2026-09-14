@@ -82,7 +82,27 @@ class FixtureReasoner:
             ActionIntent(allowed_type=ActionType.UPDATE_RAZORPAY_NOTES, condition_ids=["migration-acceptance", "training-change-order"], purpose="Synchronize ClearDue case state", target_binding_key="invoice_id", content_fields={}),
         ]
         root = RootCause(text="The migration line was invoiced while the required customer acceptance remained unmet.", refs=[ref(agreement, "Migration is billable only after a successful customer acceptance test and written acceptance by Maya"), ref(failed, "We cannot accept the migration milestone yet")], is_hypothesis=False)
-        return ReasoningProposal(condition_evaluations=conditions, claims=claims, action_intents=actions, human_dependencies=["Engineering fixes SSO group mapping", "Maya supplies valid migration acceptance", "Maya supplies the approved training change order or finance reviews the unsupported line"], root_cause=root, missing_evidence=["Approved training change order not found in searched scope"]), {"mode": "fixture", "input_tokens": None, "output_tokens": None}
+        proposal = ReasoningProposal(condition_evaluations=conditions, claims=claims, action_intents=actions, human_dependencies=["Engineering fixes SSO group mapping", "Maya supplies valid migration acceptance", "Maya supplies the approved training change order or finance reviews the unsupported line"], root_cause=root, missing_evidence=["Approved training change order not found in searched scope"])
+        # Explicit simulated arrivals exercise the real event/policy/ledger path.
+        # Live provider reasoning uses the same bounded bundle and schema.
+        arrivals = sorted((e for e in evidence.values() if e.metadata.get("fixture_condition_id")), key=lambda e: e.occurred_at or "")
+        if arrivals:
+            for item in arrivals:
+                condition = next((c for c in conditions if c.condition_id == item.metadata["fixture_condition_id"]), None)
+                if condition:
+                    condition.status = ConditionStatus(item.metadata["fixture_status"])
+                    condition.support_refs = [ref(item, item.content_text)]
+                    condition.conflict_refs = []
+                    condition.missing_information = [] if condition.status == ConditionStatus.SATISFIED else ["Acceptance is ambiguous or withdrawn"]
+            unresolved = {c.condition_id for c in conditions if c.status != ConditionStatus.SATISFIED}
+            proposal.claims = [Claim(text=f"{c.requirement}: {c.status}", evidence_refs=c.support_refs + c.conflict_refs) for c in conditions]
+            proposal.action_intents = [a for a in actions if set(a.condition_ids) & unresolved]
+            for action in proposal.action_intents:
+                action.condition_ids = [cid for cid in action.condition_ids if cid in unresolved]
+            proposal.human_dependencies = [c.requirement for c in conditions if c.condition_id in unresolved]
+            proposal.missing_evidence = [x for c in conditions for x in c.missing_information]
+            proposal.root_cause = None
+        return proposal, {"mode": "fixture", "input_tokens": None, "output_tokens": None}
 
 
 class GeminiReasoner:
@@ -98,7 +118,7 @@ class GeminiReasoner:
 
     def reason(self, bundle: dict[str, Any]) -> tuple[ReasoningProposal, dict[str, Any]]:
         response = self.client.models.generate_content(
-            model=self.model_id,
+            model=self.requested_model_id,
             contents=json.dumps(bundle, ensure_ascii=False),
             config=types.GenerateContentConfig(
                 system_instruction=self.instructions,

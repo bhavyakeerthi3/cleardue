@@ -9,6 +9,10 @@ data/google-token.json
 data/token.json
 data/*.png
 data/*.log
+data/*.providers.json
+data/*-binding.json
+data/*-sources.json
+data/*.sources.json
 data/google-client-secret.json
 data/fixture-provider.json
 data/live-manifest.json

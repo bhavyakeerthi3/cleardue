@@ -35,7 +35,9 @@ def normalize_condition_ids(
     for condition in normalized.condition_evaluations:
         candidates = [
             entry for entry in registry
-            if _condition_id_key(entry["condition_id"]) == _condition_id_key(condition.condition_id)
+            if (entry["condition_id"] == condition.condition_id or
+                _condition_id_key(condition.condition_id) is not None and
+                _condition_id_key(entry["condition_id"]) == _condition_id_key(condition.condition_id))
             and entry["kind"] == condition.kind.value
             and set(entry["line_item_ids"]) == set(condition.line_item_ids)
         ]
